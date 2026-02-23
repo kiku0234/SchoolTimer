@@ -1,5 +1,7 @@
 # Countdown timer until class begins
 
+日本語のREADEMEはこちら[./READEME.ja.md]
+
 ## For version 1.1.0
   　This HTML displays the time remaining until class starts as a timer. Below that, it shows today's date in the format Year/Month/Day/Day of the Week and displays the time in 24-hour format. The time is Japan Standard Time.
    ・List of Explanations
