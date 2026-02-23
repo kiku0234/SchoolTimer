@@ -5,12 +5,12 @@
 ## For version 1.1.0
   　This HTML timer displays the remaining time until class starts. 
   Below that, it shows today's date in the format of year/month/day/week and displays the time in 24-hour format. The time is based on Japan's Standard Time.  
-  ・List of Explanations  
-     1. About the Error Adjustment Function  
-     2. About the Full-Screen Display Mode  
-     3. About Settings  
-     4. How To use  
-     5. EULA  
+    ・List of Explanations  
+       1. About the Error Adjustment Function  
+       2. About the Full-Screen Display Mode  
+       3. About Settings  
+       4. How To use  
+       5. EULA  
 
 ---
 #### 1. About the Error Adjustment Function
@@ -43,3 +43,4 @@
   ***
 
   That's all. February 23, 2026
+
