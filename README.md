@@ -1,6 +1,6 @@
 # Countdown timer until class begins
 
-日本語のREADEMEはこちら[./READEME.ja.md]
+[日本語のREADEMEはこちら](./READEME.ja.md)
 
 ## For version 1.1.0
   　This HTML timer displays the remaining time until class starts. 
@@ -43,4 +43,5 @@
   ***
 
   That's all. February 23, 2026
+
 
