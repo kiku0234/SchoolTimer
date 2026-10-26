@@ -2,7 +2,7 @@
 
 [日本語のREADEMEはこちら](https://github.com/kiku0234/SchoolTimer/blob/main/README.ja.md)
 
-## For version 1.1.0
+## For version 1.1.1
   　This HTML timer displays the remaining time until class starts. 
   Below that, it shows today's date in the format of year/month/day/week and displays the time in 24-hour format. The time is based on Japan's Standard Time.  
     ・List of Explanations  
