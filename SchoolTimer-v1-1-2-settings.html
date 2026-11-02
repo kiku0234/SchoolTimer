@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>授業タイマー - 設定</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .panel { background: rgba(255,255,255,0.06); padding: 18px; border-radius: 8px; display: flex; gap: 12px; align-items: center; flex-direction: column; min-width: 320px; }
+        .row { display:flex; gap:12px; align-items:center; width:100%; justify-content:space-between; }
+        label { font-size: 1rem; }
+        input[type="range"] { width: 60%; }
+        button { background: #4caf50; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; flex: 1; }
+        #back { background: #2196f3; }
+        #export { background: #4caf50; }
+        #toast { position: fixed; right: 20px; top: 20px; background: rgba(0,0,0,0.85); color: #fff; padding: 10px 14px; border-radius: 6px; z-index: 99999; display: none; }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <h2>設定</h2>
+        <div class="row">
+            <label for="volumeRange">チャイム音量</label>
+            <span id="volumeValue">100</span>
+        </div>
+        <div class="row">
+            <input type="range" id="volumeRange" min="0" max="100" value="100">
+            <button id="testBtn">テスト再生</button>
+        </div>
+        <div class="row">
+            <label for="notificationToggle">通知機能</label>
+            <input type="checkbox" id="notificationToggle" checked style="width: auto; cursor: pointer;">
+        </div>
+        <div>
+            <button id="back">戻る</button>
+            <button id="export">エクスポート (JSON)</button>
+        </div>
+        <small style="color:#888; margin-top:8px;">※変更は即時反映され、保存されます</small>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        const toast = document.getElementById('toast');
+        function showToast(msg, timeout = 2500) {
+            toast.textContent = msg;
+            toast.style.display = 'block';
+            clearTimeout(toast._t);
+            toast._t = setTimeout(() => { toast.style.display = 'none'; }, timeout);
+        }
+
+        const volumeRange = document.getElementById('volumeRange');
+        const volumeValue = document.getElementById('volumeValue');
+        const notificationToggle = document.getElementById('notificationToggle');
+        const stored = parseInt(localStorage.getItem('chimeVolume'));
+        const initial = isNaN(stored) ? 100 : stored;
+        volumeRange.value = initial;
+        volumeValue.textContent = initial;
+        
+        const notifStored = localStorage.getItem('notificationEnabled');
+        const notifInitial = notifStored === null ? true : notifStored === 'true';
+        notificationToggle.checked = notifInitial;
+
+        volumeRange.addEventListener('input', (e) => {
+            const v = parseInt(e.target.value);
+            volumeValue.textContent = v;
+            localStorage.setItem('chimeVolume', v);
+        });
+
+        notificationToggle.addEventListener('change', (e) => {
+            localStorage.setItem('notificationEnabled', e.target.checked);
+            showToast(e.target.checked ? '通知を有効にしました' : '通知を無効にしました');
+        });
+
+        document.getElementById('back').addEventListener('click', () => {
+            try { localStorage.setItem('showApplyMessage', '1'); } catch (e) { }
+            window.location.href = './SchoolTimer-v1-1-2.html';
+        });
+
+        document.getElementById('testBtn').addEventListener('click', () => {
+            const v = parseInt(volumeRange.value) || 100;
+            playChimeTest(v);
+        });
+
+        function playChimeTest(volPercent){
+            try {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AC();
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                o.type = 'sine';
+                o.frequency.value = 880;
+                o.connect(g);
+                g.connect(ctx.destination);
+                g.gain.setValueAtTime(0.0001, ctx.currentTime);
+                const vol = Math.max(0, Math.min(1, volPercent/100));
+                const target = vol > 0 ? 0.2 * vol : 0.0001;
+                g.gain.exponentialRampToValueAtTime(target, ctx.currentTime + 0.01);
+                o.start();
+                g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+                setTimeout(() => { o.stop(); ctx.close(); }, 500);
+            } catch (e) {
+                showToast('音声再生できません');
+            }
+        }
+
+        document.getElementById('export').addEventListener('click', () => {
+            const config = { 
+                chimeVolume: parseInt(volumeRange.value) || 100,
+                notificationEnabled: notificationToggle.checked
+            };
+            const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'schooltimer-settings.json';
+            document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+            showToast('設定をJSONでエクスポートしました');
+        });
+
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'chimeVolume') {
+                const v = parseInt(e.newValue);
+                volumeRange.value = isNaN(v) ? 100 : v;
+                volumeValue.textContent = isNaN(v) ? 100 : v;
+                showToast('音量が他タブで更新されました');
+            } else if (e.key === 'notificationEnabled') {
+                notificationToggle.checked = e.newValue === 'true';
+                showToast('通知設定が他タブで更新されました');
+            }
+        });
+    </script>
+</body>
+</html>

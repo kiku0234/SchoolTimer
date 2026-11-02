@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>授業タイマー</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            transition: background-color 0.5s ease;
+        }
+        #status-container { display: flex; align-items: baseline; gap: 15px; margin-bottom: 10px; }
+        #status { font-size: 2rem; color: #aaa; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        #current-offset-display { font-size: 1rem; color: #ffeb3b; background: rgba(255,235,59,0.1); padding: 2px 8px; border-radius: 4px; }
+        
+        #timer { font-size: 15vw; font-weight: bold; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        #date { font-size: 1.8rem; margin-top: 20px; color: #888; letter-spacing: 2px; }
+        #clock { font-size: 3.5rem; margin-top: 5px; color: #4caf50; text-shadow: 0 2px 4px rgba(0,0,0,0.5); font-variant-numeric: tabular-nums; }
+        #msg { position: absolute; top: 20px; color: #ffeb3b; font-size: 1rem; cursor: pointer; border: 1px solid #ffeb3b; padding: 5px 10px; border-radius: 20px; }
+
+        #version-info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            font-size: 0.8rem;
+            color: #555;
+            z-index: 50;
+        }
+
+        /* 操作パネルのコンテナ */
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            display: flex; gap: 15px; align-items: center; z-index: 100; transition: opacity 0.3s;
+        }
+        .panel { background: rgba(255,255,255,0.1); padding: 10px; border-radius: 8px; display: flex; gap: 10px; align-items: center; }
+        input { width: 60px; background: #333; color: #fff; border: 1px solid #555; padding: 5px; text-align: center; border-radius: 4px; }
+        button { background: #4caf50; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+        
+        /* コピーライトのスタイル */
+        .fixed-copyright {
+            position: fixed;
+            right: 0;
+            bottom: 0;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            padding: 10px 20px;
+            font-size: 0.8rem;
+            z-index: 9999;
+            border-top-left-radius: 8px;
+            transition: opacity 0.3s; /* フェードアウト用 */
+        }
+
+        .hidden-ui { opacity: 0; pointer-events: none; }
+        .fullscreen-hide { display: none !important; }
+
+        #debug-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            border: 2px solid #4caf50;
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 10000;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            display: none;
+            color: #fff;
+        }
+        #debug-modal.show { display: block; }
+        #debug-modal h3 { margin-top: 0; color: #4caf50; border-bottom: 1px solid #4caf50; padding-bottom: 10px; }
+        #debug-modal p { margin: 8px 0; font-size: 0.9rem; font-family: monospace; }
+        #debug-modal .label { color: #ffeb3b; font-weight: bold; }
+        #debug-modal button { background: #f44336; margin-top: 15px; width: 100%; }
+        #version-info { cursor: pointer; }
+
+        /* 全画面表示時のスタイル */
+        :fullscreen #msg,
+        :fullscreen #controls,
+        :fullscreen #copyright,
+        :fullscreen #status-container {
+            display: none !important;
+        }
+    </style>
+</head>
+<body onmousemove="showUI()">
+    <div id="msg" onclick="requestPermission()">ここをクリックして通知を許可</div>
+    
+    <div id="status-container">
+        <div id="status">読み込み中...</div>
+        <div id="current-offset-display">誤差: 0s</div>
+    </div>
+    
+    <div id="timer">--:--:--</div>
+    <div id="date">0000/00/00/曜</div>
+    <div id="clock">00:00:00</div>
+
+    <div id="version-info">v1.1.2</div>
+
+    <div id="controls">
+        <div class="panel">
+            <span>チャイム誤差(秒):</span>
+            <input type="number" id="offsetInput" value="0" step="1">
+            <button onclick="setOffset()">適用</button>
+        </div>
+        <div class="panel">
+            <button onclick="openSettings()">設定</button>
+        </div>
+        <button id="fsBtn" onclick="toggleFullScreen()">全画面表示</button>
+    </div>
+
+    <!-- デバッグモーダル -->
+    <div id="debug-modal">
+        <h3>デバッグ情報</h3>
+        <p><span class="label">通知権限:</span> <span id="debug-notification">確認中...</span></p>
+        <p><span class="label">LocalStorage:</span> <span id="debug-localstorage">確認中...</span></p>
+        <p><span class="label">チャイム音量:</span> <span id="debug-chime-vol">確認中...</span></p>
+        <p><span class="label">通知機能:</span> <span id="debug-notification-enabled">確認中...</span></p>
+        <p><span class="label">PC現在時刻:</span> <span id="debug-pc-time">確認中...</span></p>
+        <p><span class="label">累計起動時間:</span> <span id="debug-total-active-time">確認中...</span></p>
+        <p><span class="label">最後の通知:</span> <span id="debug-last-notification">未送信</span></p>
+        <button onclick="closeDebugModal()">閉じる</button>
+    </div>
+
+    <!-- コピーライト表示部分 -->
+    <div class="fixed-copyright" id="copyright">
+        <small>&copy; 2026 Kiku0234 All Rights Reserved.</small>
+    </div>
+
+    <script>
+        const VERSION = "v1.1.2"; 
+
+        const schedule = [
+            { start: "08:30", end: "09:20" },
+            { start: "09:30", end: "10:20" },
+            { start: "10:30", end: "11:20" },
+            { start: "11:30", end: "12:20" },
+            { start: "13:20", end: "14:10" },
+            { start: "14:20", end: "15:10" }
+        ];
+
+        let holidays = {};
+        // 通知済み管理（キー: date-index）
+        const notified = {};
+        let timerOffset = parseInt(localStorage.getItem('timerOnlyOffset')) || 0;
+        // チャイム音量（0-100）
+        let chimeVolume = (function(){ const v = parseInt(localStorage.getItem('chimeVolume')); return isNaN(v) ? 100 : v; })();
+        // 通知機能の有効/無効
+        let notificationEnabled = (function(){ const v = localStorage.getItem('notificationEnabled'); return v === null ? true : v === 'true'; })();
+        let uiTimeout;
+
+        document.getElementById('version-info').textContent = VERSION;
+        document.getElementById('offsetInput').value = timerOffset / 1000;
+        updateOffsetDisplay();
+
+        const toast = document.createElement('div');
+        toast.id = 'toast';
+        Object.assign(toast.style, {
+            position: 'fixed',
+            right: '20px',
+            top: '20px',
+            background: 'rgba(0,0,0,0.85)',
+            color: '#fff',
+            padding: '10px 14px',
+            borderRadius: '6px',
+            zIndex: 99999,
+            display: 'none',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.6)'
+        });
+        document.body.appendChild(toast);
+
+        function showToast(msg, timeout = 4000) {
+            toast.textContent = msg;
+            toast.style.display = 'block';
+            clearTimeout(toast._t);
+            toast._t = setTimeout(() => {
+                toast.style.display = 'none';
+            }, timeout);
+        }
+
+        function playChime() {
+            try {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AC();
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                o.type = 'sine';
+                o.frequency.value = 880;
+                o.connect(g);
+                g.connect(ctx.destination);
+                g.gain.setValueAtTime(0.0001, ctx.currentTime);
+                const vol = Math.max(0, Math.min(1, (chimeVolume || 100) / 100));
+                const target = vol > 0 ? 0.2 * vol : 0.0001;
+                g.gain.exponentialRampToValueAtTime(target, ctx.currentTime + 0.01);
+                o.start();
+                g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+                setTimeout(() => { o.stop(); ctx.close(); }, 500);
+            } catch (e) {
+            }
+        }
+
+        function playErrorChime(){
+            try{
+                const AC = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AC();
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                o.type = 'sine';
+                o.frequency.value = 1400;
+                o.connect(g);
+                g.connect(ctx.destination);
+                g.gain.setValueAtTime(0.0001, ctx.currentTime);
+                const vol = Math.max(0, Math.min(1, (chimeVolume || 100) / 100));
+                const target = vol > 0 ? 0.25 * vol : 0.0001;
+                const t = ctx.currentTime;
+                o.start(t);
+                g.gain.exponentialRampToValueAtTime(target, t + 0.005);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+                g.gain.exponentialRampToValueAtTime(target, t + 0.15 + 0.005);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + 0.21);
+                g.gain.exponentialRampToValueAtTime(target, t + 0.30 + 0.005);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + 0.36);
+                setTimeout(() => { o.stop(); ctx.close(); }, 700);
+            }catch(e){
+                showToast('音声再生できません');
+            }
+        }
+
+        function requestPermission() {
+            if (!('Notification' in window)) {
+                showToast('このブラウザは通知に対応していません');
+                return;
+            }
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    const msgEl = document.getElementById('msg');
+                    msgEl.textContent = "通知許可済み";
+                    setTimeout(() => msgEl.style.display = 'none', 2000);
+                    showToast('通知が許可されました');
+                } else if (permission === 'denied') {
+                    showToast('通知がブロックされました。ブラウザ設定で許可してください');
+                }
+            });
+        }
+
+        function setOffset() {
+            const sec = parseFloat(document.getElementById('offsetInput').value) || 0;
+            timerOffset = sec * 1000;
+            localStorage.setItem('timerOnlyOffset', timerOffset);
+            updateOffsetDisplay();
+            update();
+        }
+
+        function updateOffsetDisplay() {
+            const sec = timerOffset / 1000;
+            document.getElementById('current-offset-display').textContent = `誤差: ${sec > 0 ? "+" : ""}${sec}秒`;
+        }
+
+        async function fetchHolidays() {
+            try {
+                const res = await fetch('https://holidays-jp.github.io/api/v1/date.json');
+                holidays = await res.json();
+            } catch (e) { console.error("祝日取得失敗", e); }
+        }
+
+        function sendNotification(title, body) {
+            if (!notificationEnabled) return;
+            if (!('Notification' in window)) { showToast(body); playChime(); return; }
+            if (Notification.permission === 'granted') {
+                try { const n = new Notification(title, { body }); n.onclick = () => { window.focus(); n.close(); }; } catch(e){ console.error('通知送信エラー', e); showToast(body); }
+            } else { showToast(body); }
+            playChime();
+        }
+
+        function update() {
+            const realNow = new Date();
+            const dateStr = `${realNow.getFullYear()}-${String(realNow.getMonth() + 1).padStart(2, '0')}-${String(realNow.getDate()).padStart(2, '0')}`;
+            const dayIdx = realNow.getDay();
+            const dayNames = ["日", "月", "火", "水", "木", "金", "土"];
+            
+            document.getElementById('clock').textContent = realNow.toLocaleTimeString('ja-JP');
+            document.getElementById('date').textContent = `${realNow.getFullYear()}/${String(realNow.getMonth()+1).padStart(2, '0')}/${String(realNow.getDate()).padStart(2, '0')}/${dayNames[dayIdx]}`;
+
+            const virtualNow = new Date(realNow.getTime() + timerOffset);
+            let statusText = "本日の授業は終了しました";
+            let timerValue = "--:--:--";
+            let diffMs = 0;
+            let currentStatus = "idle";
+            let activeIdx = -1;
+
+            if (dayIdx === 0 || dayIdx === 6 || holidays[dateStr]) {
+                statusText = "本日は授業がありません。";
+            } else {
+                for (let i = 0; i < schedule.length; i++) {
+                    if (dayIdx === 1 && i === 5) continue;
+                    const [sH, sM] = schedule[i].start.split(':');
+                    const [eH, eM] = schedule[i].end.split(':');
+                    const startTime = new Date(realNow).setHours(sH, sM, 0, 0);
+                    const endTime = new Date(realNow).setHours(eH, eM, 0, 0);
+
+                    if (virtualNow.getTime() < startTime) {
+                        statusText = "授業開始まで";
+                        diffMs = startTime - virtualNow.getTime();
+                        currentStatus = "before_start";
+                        activeIdx = i;
+                        break;
+                    } else if (virtualNow.getTime() >= startTime && virtualNow.getTime() < endTime) {
+                        statusText = "授業終了まで";
+                        diffMs = endTime - virtualNow.getTime();
+                        currentStatus = "in_class";
+                        break;
+                    }
+                }
+
+                if (diffMs > 0) {
+                    const hrs = Math.floor(diffMs / 3600000);
+                    const mins = Math.floor((diffMs % 3600000) / 60000);
+                    const secs = Math.floor((diffMs % 60000) / 1000);
+                    timerValue = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+                    const totalSecs = Math.floor(diffMs / 1000);
+                    const notifiedKey = `${dateStr}-${activeIdx}`;
+                    if (currentStatus === "before_start" && totalSecs <= 180 && totalSecs >= 0 && !notified[notifiedKey]) {
+                        const title = "授業3分前";
+                        const body = `${schedule[activeIdx].start} から授業開始です！`;
+                        sendNotification(title, body);
+                        notified[notifiedKey] = true;
+                    }
+                }
+            }
+
+            document.getElementById('status').textContent = statusText;
+            document.getElementById('timer').textContent = timerValue;
+
+            const fsBtn = document.getElementById('fsBtn');
+            if (document.fullscreenElement) {
+                fsBtn.classList.add('fullscreen-hide');
+            } else {
+                fsBtn.classList.remove('fullscreen-hide');
+            }
+        }
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                closeDebugModal();
+                document.documentElement.requestFullscreen();
+            } else { document.exitFullscreen(); }
+        }
+
+        function openSettings() {
+            try { window.location.href = './SchoolTimer-v1-1-2-settings.html'; } catch (e) { playErrorChime(); showToast('設定ページへ遷移できません'); console.error('openSettings error', e); }
+        }
+
+        function showUI() {
+            const controls = document.getElementById('controls');
+            const copyright = document.getElementById('copyright');
+            controls.classList.remove('hidden-ui');
+            copyright.classList.remove('hidden-ui');
+            clearTimeout(uiTimeout);
+            if (document.fullscreenElement) {
+                uiTimeout = setTimeout(() => { controls.classList.add('hidden-ui'); copyright.classList.add('hidden-ui'); }, 3000);
+            }
+        }
+
+        let debugClickCount = 0; let debugClickTimer = null; let debugUpdateInterval = null;
+        const versionEl = document.getElementById('version-info');
+        versionEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (document.fullscreenElement) return;
+            debugClickCount++;
+            if (debugClickCount === 1) { debugClickTimer = setTimeout(() => { debugClickCount = 0; }, 5000); }
+            if (debugClickCount >= 10) { openDebugModal(); debugClickCount = 0; clearTimeout(debugClickTimer); }
+        });
+
+        let debugModeEnabled = false;
+        let sessionStartTime = Date.now();
+
+        function openDebugModal() {
+            debugModeEnabled = true;
+            updateDebugInfo();
+            if (debugUpdateInterval) clearInterval(debugUpdateInterval);
+            debugUpdateInterval = setInterval(updateDebugInfo, 1000);
+            document.getElementById('debug-modal').classList.add('show');
+        }
+
+        function updateDebugInfo() {
+            const notifPerm = ('Notification' in window) ? Notification.permission : '非対応';
+            document.getElementById('debug-notification').textContent = notifPerm || '不明';
+            let storageOk = '✓ 動作';
+            try { localStorage.setItem('__test__', 'test'); localStorage.removeItem('__test__'); } catch (e) { storageOk = '✗ 動作不可: ' + e.message; }
+            document.getElementById('debug-localstorage').textContent = storageOk;
+            document.getElementById('debug-chime-vol').textContent = chimeVolume + '%';
+            document.getElementById('debug-notification-enabled').textContent = notificationEnabled ? '有効' : '無効';
+            const now = new Date();
+            document.getElementById('debug-pc-time').textContent = now.toLocaleTimeString('ja-JP') + ' ' + now.toLocaleDateString('ja-JP');
+            const totalSeconds = Math.floor((Date.now() - sessionStartTime) / 1000) + parseInt(localStorage.getItem('savedTotalActiveTime') || 0);
+            const days = Math.floor(totalSeconds / 86400);
+            const hours = Math.floor((totalSeconds % 86400) / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            let timeStr = '';
+            if (days > 0) timeStr += `${days}日 `;
+            if (hours > 0) timeStr += `${hours}時間 `;
+            if (minutes > 0) timeStr += `${minutes}分 `;
+            timeStr += `${seconds}秒`;
+            document.getElementById('debug-total-active-time').textContent = timeStr || '0秒';
+            const notifiedKeys = Object.keys(notified);
+            if (notifiedKeys.length > 0) { const lastKey = notifiedKeys[notifiedKeys.length - 1]; document.getElementById('debug-last-notification').textContent = lastKey; }
+        }
+
+        function closeDebugModal() { document.getElementById('debug-modal').classList.remove('show'); if (debugUpdateInterval) { clearInterval(debugUpdateInterval); debugUpdateInterval = null; } }
+
+        const msgEl = document.getElementById('msg');
+        if (!('Notification' in window)) { msgEl.textContent = '通知非対応のブラウザ'; msgEl.style.cursor = 'default'; }
+        else if (Notification.permission === 'granted') { msgEl.textContent = '通知許可済み'; setTimeout(() => msgEl.style.display = 'none', 2000); }
+        else if (Notification.permission === 'denied') { msgEl.textContent = '通知ブロック中（ブラウザ設定で許可してください）'; }
+        else { msgEl.textContent = 'ここをクリックして通知を許可'; }
+
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'chimeVolume') { const v = parseInt(e.newValue); chimeVolume = isNaN(v) ? 100 : v; }
+            else if (e.key === 'notificationEnabled') { notificationEnabled = e.newValue === 'true'; }
+            else if (e.key === 'showApplyMessage' && e.newValue) { showToast('設定を反映する場合、再読み込みしてください。'); try { localStorage.removeItem('showApplyMessage'); } catch(e){} }
+        });
+
+        if (localStorage.getItem('showApplyMessage')) { showToast('設定を反映する場合、再読み込みしてください。'); try { localStorage.removeItem('showApplyMessage'); } catch (e) {} }
+
+        fetchHolidays().then(() => { setInterval(update, 1000); update(); });
+
+        window.addEventListener('beforeunload', () => { localStorage.setItem('savedTotalActiveTime', Math.floor((Date.now() - sessionStartTime) / 1000) + parseInt(localStorage.getItem('savedTotalActiveTime') || 0)); });
+    </script>
+</body>
+</html>
